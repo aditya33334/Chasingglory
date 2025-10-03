@@ -1,0 +1,56 @@
+trigger:
+  branches:
+    include:
+      - main
+
+variables:
+  terraformVersion: '1.6.0'
+  azureServiceConnection: 'Your-Service-Connection-Name'
+  backendResourceGroup: 'tfstate-rg'
+  backendStorageAccount: 'tfstateaccount'
+  backendContainerName: 'tfstate'
+  backendKey: 'terraform.tfstate'
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+stages:
+- stage: Terraform_Init
+  jobs:
+  - job: Init
+    steps:
+    - script: |
+        curl -O https://releases.hashicorp.com/terraform/${terraformVersion}/terraform_${terraformVersion}_linux_amd64.zip
+        unzip terraform_${terraformVersion}_linux_amd64.zip
+        sudo mv terraform /usr/local/bin/
+        terraform version
+      displayName: 'Install Terraform CLI'
+
+    - script: |
+        terraform init \
+          -backend-config="resource_group_name=$(backendResourceGroup)" \
+          -backend-config="storage_account_name=$(backendStorageAccount)" \
+          -backend-config="container_name=$(backendContainerName)" \
+          -backend-config="key=$(backendKey)"
+      displayName: 'Terraform Init'
+
+- stage: Terraform_Plan
+  jobs:
+  - job: Plan
+    steps:
+    - script: terraform plan -out=tfplan
+      displayName: 'Terraform Plan'
+
+    - publish: tfplan
+      artifact: terraformPlan
+
+- stage: Terraform_Apply
+  condition: succeeded()
+  jobs:
+  - job: Apply
+    steps:
+    - download: current
+      artifact: terraformPlan
+
+    - script: terraform apply -auto-approve tfplan
+      displayName: 'Terraform Apply'
