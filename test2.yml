@@ -12,7 +12,7 @@ variables:
   backendKey: 'terraform.tfstate'
 
 pool:
-  name: 'self hosted'
+  name: 'self-hosted'
 
 stages:
 - stage: Terraform_Init
