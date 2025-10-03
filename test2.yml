@@ -4,47 +4,57 @@ trigger:
       - main
 
 variables:
-  terraformVersion: '1.6.0'
-  azureServiceConnection: 'Your-Service-Connection-Name'
+  terraformVersion: '1.13.3'
+  azureServiceConnection: 'devops test'
   backendResourceGroup: 'tfstate-rg'
   backendStorageAccount: 'tfstateaccount'
   backendContainerName: 'tfstate'
   backendKey: 'terraform.tfstate'
 
 pool:
-  vmImage: 'ubuntu-latest'
+  vmImage: 'self-hosted'
 
 stages:
 - stage: Terraform_Init
   jobs:
   - job: Init
     steps:
-    - script: |
-        curl -O https://releases.hashicorp.com/terraform/${terraformVersion}/terraform_${terraformVersion}_linux_amd64.zip
-        unzip terraform_${terraformVersion}_linux_amd64.zip
-        sudo mv terraform /usr/local/bin/
-        terraform version
-      displayName: 'Install Terraform CLI'
-
-    - script: |
-        terraform init \
-          -backend-config="resource_group_name=$(backendResourceGroup)" \
-          -backend-config="storage_account_name=$(backendStorageAccount)" \
-          -backend-config="container_name=$(backendContainerName)" \
-          -backend-config="key=$(backendKey)"
-      displayName: 'Terraform Init'
+    - task: AzureCLI@2
+      inputs:
+        azureSubscription: $(azureServiceConnection)
+        scriptType: bash
+        scriptLocation: inlineScript
+        inlineScript: |
+          curl -O https://releases.hashicorp.com/terraform/${terraformVersion}/terraform_${terraformVersion}_linux_amd64.zip
+          unzip terraform_${terraformVersion}_linux_amd64.zip
+          sudo mv terraform /usr/local/bin/
+          terraform version
+          terraform init \
+            -backend-config="resource_group_name=$(backendResourceGroup)" \
+            -backend-config="storage_account_name=$(backendStorageAccount)" \
+            -backend-config="container_name=$(backendContainerName)" \
+            -backend-config="key=$(backendKey)"
+      displayName: 'Install Terraform and Init with Azure Service Connection'
 
 - stage: Terraform_Plan
+  dependsOn: Terraform_Init
   jobs:
   - job: Plan
     steps:
-    - script: terraform plan -out=tfplan
+    - task: AzureCLI@2
+      inputs:
+        azureSubscription: $(azureServiceConnection)
+        scriptType: bash
+        scriptLocation: inlineScript
+        inlineScript: |
+          terraform plan -out=tfplan
       displayName: 'Terraform Plan'
 
     - publish: tfplan
       artifact: terraformPlan
 
 - stage: Terraform_Apply
+  dependsOn: Terraform_Plan
   condition: succeeded()
   jobs:
   - job: Apply
@@ -52,5 +62,11 @@ stages:
     - download: current
       artifact: terraformPlan
 
-    - script: terraform apply -auto-approve tfplan
+    - task: AzureCLI@2
+      inputs:
+        azureSubscription: $(azureServiceConnection)
+        scriptType: bash
+        scriptLocation: inlineScript
+        inlineScript: |
+          terraform apply -auto-approve tfplan
       displayName: 'Terraform Apply'
