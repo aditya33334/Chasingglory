@@ -1,5 +1,5 @@
 module "keyvault" {
-  source              = ".working"
+  source              = "./working"
   resource_group_name = "rg-iac-demo"
   location            = "East US"
   key_vault_name      = "kv-iac-demo"
