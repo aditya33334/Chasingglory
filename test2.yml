@@ -5,7 +5,7 @@ trigger:
 
 variables:
   terraformVersion: '1.6.0'
-  azureServiceConnection: 'Your-Service-Connection-Name'
+  azureServiceConnection: 'devops test'
   backendResourceGroup: 'tfstate-rg'
   backendStorageAccount: 'tfstateaccount'
   backendContainerName: 'tfstate'
