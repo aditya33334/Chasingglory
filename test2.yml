@@ -44,7 +44,7 @@ stages:
     - task: AzureCLI@2
       inputs:
         azureSubscription: $(azureServiceConnection)
-        scriptType: bash
+        scriptType: ps
         scriptLocation: inlineScript
         inlineScript: |
           terraform plan -out=tfplan
