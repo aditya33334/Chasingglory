@@ -4,7 +4,7 @@ trigger:
       - main
 
 variables:
-  terraformVersion: '1.6.0'          # DO NOT change unless you want to
+  terraformVersion: '1.13.3'          # DO NOT change unless you want to
   azureServiceConnection: 'Landing-zone'
   backendResourceGroup: 'Automation-ac-RG'
   backendStorageAccount: 'tfstate45454'
