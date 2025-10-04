@@ -4,8 +4,8 @@ trigger:
       - main
 
 variables:
-  terraformVersion: '1.13.3'
-  azureServiceConnection: 'devops test'
+  terraformVersion: '1.6.0'
+  azureServiceConnection: 'Your-Service-Connection-Name'
   backendResourceGroup: 'tfstate-rg'
   backendStorageAccount: 'tfstateaccount'
   backendContainerName: 'tfstate'
@@ -22,17 +22,18 @@ stages:
     - task: AzureCLI@2
       inputs:
         azureSubscription: $(azureServiceConnection)
-        scriptType: bash
+        scriptType: ps
         scriptLocation: inlineScript
         inlineScript: |
-          curl -O https://releases.hashicorp.com/terraform/${terraformVersion}/terraform_${terraformVersion}_linux_amd64.zip
-          unzip terraform_${terraformVersion}_linux_amd64.zip
-          sudo mv terraform /usr/local/bin/
+          $terraformZip = "terraform_${env:terraformVersion}_windows_amd64.zip"
+          Invoke-WebRequest -Uri "https://releases.hashicorp.com/terraform/$($env:terraformVersion)/$terraformZip" -OutFile $terraformZip
+          Expand-Archive -Path $terraformZip -DestinationPath "$env:USERPROFILE\terraform"
+          $env:Path += ";$env:USERPROFILE\terraform"
           terraform version
-          terraform init \
-            -backend-config="resource_group_name=$(backendResourceGroup)" \
-            -backend-config="storage_account_name=$(backendStorageAccount)" \
-            -backend-config="container_name=$(backendContainerName)" \
+          terraform init `
+            -backend-config="resource_group_name=$(backendResourceGroup)" `
+            -backend-config="storage_account_name=$(backendStorageAccount)" `
+            -backend-config="container_name=$(backendContainerName)" `
             -backend-config="key=$(backendKey)"
       displayName: 'Install Terraform and Init with Azure Service Connection'
 
