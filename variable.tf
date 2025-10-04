@@ -19,7 +19,16 @@ variable "tenant_id" {
   description = "Azure AD tenant ID"
 }
 
-variable "client_id" {}
-variable "client_secret" {}
+variable "client_id" {
+  type        = string
+  description = "client ID for the service principal"
+}
+variable "client_secret" {
+  type        = string
+  description = "client secret for the service principal"
+}
 
-variable "subscription_id" {}
+variable "subscription_id" {
+  type        = string
+  description = "subscription ID"
+}
