@@ -6,8 +6,8 @@ trigger:
 variables:
   terraformVersion: '1.6.0'
   azureServiceConnection: 'devops test'
-  backendResourceGroup: 'tfstate-rg'
-  backendStorageAccount: 'tfstateaccount'
+  backendResourceGroup: 'Automation-ac-RG'
+  backendStorageAccount: 'tfstate45454'
   backendContainerName: 'tfstate'
   backendKey: 'terraform.tfstate'
 
@@ -25,17 +25,12 @@ stages:
         scriptType: ps
         scriptLocation: inlineScript
         inlineScript: |
-          $terraformZip = "terraform_${env:terraformVersion}_windows_amd64.zip"
-          Invoke-WebRequest -Uri "https://releases.hashicorp.com/terraform/$($env:terraformVersion)/$terraformZip" -OutFile $terraformZip
-          Expand-Archive -Path $terraformZip -DestinationPath "$env:USERPROFILE\terraform"
-          $env:Path += ";$env:USERPROFILE\terraform"
-          terraform version
           terraform init `
             -backend-config="resource_group_name=$(backendResourceGroup)" `
             -backend-config="storage_account_name=$(backendStorageAccount)" `
             -backend-config="container_name=$(backendContainerName)" `
             -backend-config="key=$(backendKey)"
-      displayName: 'Install Terraform and Init with Azure Service Connection'
+      displayName: 'Init Terraform with Azure Service Connection'
 
 - stage: Terraform_Plan
   dependsOn: Terraform_Init
