@@ -172,6 +172,14 @@ stages:
         scriptLocation: inlineScript
         inlineScript: |
           Set-Location "$(System.DefaultWorkingDirectory)/$(tfWorkingDirectory)"
+
+          # ensure modules and backend are configured in this job (fixes "Module not installed")
+          terraform init -reconfigure -upgrade `
+            -backend-config="resource_group_name=$(backendResourceGroup)" `
+            -backend-config="storage_account_name=$(backendStorageAccount)" `
+            -backend-config="container_name=$(backendContainerName)" `
+            -backend-config="key=$(backendKey)"
+
           terraform plan -out=tfplan
 
     - task: PublishPipelineArtifact@1
