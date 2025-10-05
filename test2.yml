@@ -180,7 +180,8 @@ stages:
             -backend-config="container_name=$(backendContainerName)" `
             -backend-config="key=$(backendKey)"
 
-          terraform plan -out=tfplan
+          # added -input=false to prevent Terraform from hanging for missing variables
+          terraform plan -out=tfplan -input=false
 
     - task: PublishPipelineArtifact@1
       displayName: 'Publish terraform plan artifact'
