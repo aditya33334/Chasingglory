@@ -1,1 +1,1 @@
-{"Modules":[{"Key":"","Source":"","Dir":"."},{"Key":"keyvault","Source":"./module/keyvault","Dir":"module/keyvault"}]}
+{"Modules":[{"Key":"","Source":"","Dir":"."},{"Key":"keyvault","Source":"./module/keyvault","Dir":"module/keyvault"},{"Key":"resourcegroup","Source":"./resourcegroups","Dir":"resourcegroups"}]}

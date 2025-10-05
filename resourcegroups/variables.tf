@@ -1,9 +1,9 @@
-variable "azurerm_resource_group_name" {
+variable "rggroup_name" {
 description = "East US resource group"
 type = string
 }
 
-variable "azurerm_resource_group_location" {
+variable "rggroup_location" {
 description = "Location of resource group"
 type = string
 }

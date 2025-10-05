@@ -1,2 +1,2 @@
-azurerm_resource_group_name= "app-rg"
-azurerm_resource_group_location= "East US"
+rggroup_name= "app-rg"
+rggroup_location= "East US"
