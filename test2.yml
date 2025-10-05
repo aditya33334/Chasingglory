@@ -4,27 +4,27 @@ trigger:
       - main
 
 pool:
-  vmImage: 'ubuntu-latest'  # Microsoft-hosted agent
+  vmImage: 'ubuntu-latest'
 
 variables:
-  TF_VERSION: '1.13.3'       # Latest stable Terraform version
+  TF_VERSION: '1.13.3'
+  azureServiceConnection: 'Landing-zone'   # update if your service connection name differs
 
 steps:
-- task: UseTerraform@0
+- checkout: self
+
+- task: TerraformInstaller@0
   inputs:
-    terraformVersion: $(TF_VERSION)
+    terraformVersion: '$(TF_VERSION)'
 
-- script: |
-    echo "🔧 Initializing Terraform..."
-    terraform init
-  displayName: 'Terraform Init'
-
-- script: |
-    echo "📐 Planning Terraform deployment..."
-    terraform plan -var-file="terraform.tfvars"
-  displayName: 'Terraform Plan'
-
-- script: |
-    echo "🚀 Applying Terraform changes..."
-    terraform apply -var-file="terraform.tfvars" -auto-approve
-  displayName: 'Terraform Apply'
+- task: AzureCLI@2
+  displayName: 'Terraform: init → plan → apply'
+  inputs:
+    azureSubscription: '$(azureServiceConnection)'
+    scriptType: bash
+    scriptLocation: inlineScript
+    inlineScript: |
+      cd "$(System.DefaultWorkingDirectory)"
+      terraform init -reconfigure
+      terraform plan -out=tfplan -input=false
+      terraform apply -auto-approve tfplan
