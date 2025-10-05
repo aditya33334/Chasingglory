@@ -1,0 +1,263 @@
+trigger:
+  branches:
+    include:
+      - main
+
+variables:
+  terraformVersion: '1.13.3'          # DO NOT change unless you want to
+  azureServiceConnection: 'Landing-zone'
+  backendResourceGroup: 'Automation-ac-RG'
+  backendStorageAccount: 'tfstate45454'
+  backendContainerName: 'tfstate'
+  backendKey: 'terraform.tfstate'
+  tfWorkingDirectory: '.'            # Repo-relative path where your .tf files live (e.g. infra/landingzones)
+
+pool:
+  name: 'Default'
+
+stages:
+- stage: Terraform_Init
+  jobs:
+  - job: Init
+    steps:
+    - checkout: self
+
+    - task: PowerShell@2
+      displayName: 'Ensure terraform available (detect existing or download)'
+      inputs:
+        targetType: 'inline'
+        script: |
+          $tfVersionVar = "$(terraformVersion)"
+          $agentToolsDir = "$(Agent.ToolsDirectory)"
+          $expectedToolsDir = Join-Path $agentToolsDir "terraform\$tfVersionVar"
+          $expectedTfExe = Join-Path $expectedToolsDir "terraform.exe"
+
+          Write-Host "Checking toolcache location: $expectedTfExe"
+          if (Test-Path $expectedTfExe) {
+            $tfExe = $expectedTfExe
+            Write-Host "Found terraform in toolcache: $tfExe"
+          } else {
+            Write-Host "Not found in toolcache. Searching Downloads for terraform_* folders..."
+            $downloadMatches = Get-ChildItem -Path "$env:USERPROFILE\Downloads" -Filter "terraform_*" -Directory -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending
+            $tfExe = $null
+            foreach ($d in $downloadMatches) {
+              $candidate = Join-Path $d.FullName "terraform.exe"
+              if (Test-Path $candidate) {
+                $tfExe = $candidate
+                Write-Host "Found terraform at: $tfExe"
+                break
+              }
+            }
+
+            if (-not $tfExe) {
+              $cmd = Get-Command terraform -ErrorAction SilentlyContinue
+              if ($cmd) {
+                $tfExe = $cmd.Source
+                Write-Host "Found terraform on PATH at: $tfExe"
+              }
+            }
+
+            if (-not $tfExe) {
+              Write-Host "No existing terraform binary found. Downloading terraform $tfVersionVar to toolcache..."
+              New-Item -ItemType Directory -Path $expectedToolsDir -Force | Out-Null
+              $zipName = "terraform_${tfVersionVar}_windows_amd64.zip"
+              $url = "https://releases.hashicorp.com/terraform/$tfVersionVar/$zipName"
+              $zipPath = Join-Path $env:TEMP $zipName
+              Invoke-WebRequest -Uri $url -OutFile $zipPath -UseBasicParsing
+              Expand-Archive -Path $zipPath -DestinationPath $expectedToolsDir -Force
+              Remove-Item $zipPath -Force
+              $tfExe = $expectedTfExe
+              Write-Host "Downloaded terraform to: $tfExe"
+            }
+          }
+
+          if (-not (Test-Path $tfExe)) {
+            Write-Error "terraform binary still not found. Ensure terraform.exe is present on the agent or update detection."
+            exit 1
+          }
+
+          $tfFolder = Split-Path -Parent $tfExe
+          Write-Host "Prepending terraform folder to PATH: $tfFolder"
+          Write-Host "##vso[task.prependpath]$tfFolder"
+          $env:PATH = "$tfFolder;$env:PATH"
+
+          # Verify by calling the binary directly (use full path)
+          & $tfExe version
+
+    - task: AzureCLI@2
+      displayName: 'Init Terraform (working dir: $(tfWorkingDirectory))'
+      inputs:
+        azureSubscription: $(azureServiceConnection)
+        scriptType: ps
+        scriptLocation: inlineScript
+        inlineScript: |
+          $wd = Resolve-Path "$(System.DefaultWorkingDirectory)/$(tfWorkingDirectory)" -ErrorAction SilentlyContinue
+          if (-not $wd) {
+            Write-Error "Terraform working directory not found: $(tfWorkingDirectory). Update the variable tfWorkingDirectory."
+            exit 1
+          }
+          Set-Location $wd
+
+          if (-not (Get-ChildItem -Path . -Filter "*.tf" -Recurse -ErrorAction SilentlyContinue)) {
+            Write-Error "No .tf files found in $(tfWorkingDirectory). Put your Terraform configs there or update tfWorkingDirectory."
+            exit 1
+          }
+
+          terraform init `
+            -backend-config="resource_group_name=$(backendResourceGroup)" `
+            -backend-config="storage_account_name=$(backendStorageAccount)" `
+            -backend-config="container_name=$(backendContainerName)" `
+            -backend-config="key=$(backendKey)"
+
+- stage: Terraform_Plan
+  dependsOn: Terraform_Init
+  jobs:
+  - job: Plan
+    steps:
+    - checkout: self
+
+    - task: PowerShell@2
+      displayName: 'Ensure terraform available (detect or download) - Plan job'
+      inputs:
+        targetType: 'inline'
+        script: |
+          $tfVersionVar = "$(terraformVersion)"
+          $agentToolsDir = "$(Agent.ToolsDirectory)"
+          $expectedToolsDir = Join-Path $agentToolsDir "terraform\$tfVersionVar"
+          $expectedTfExe = Join-Path $expectedToolsDir "terraform.exe"
+
+          if (Test-Path $expectedTfExe) {
+            $tfExe = $expectedTfExe
+          } else {
+            $downloadMatches = Get-ChildItem -Path "$env:USERPROFILE\Downloads" -Filter "terraform_*" -Directory -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending
+            $tfExe = $null
+            foreach ($d in $downloadMatches) {
+              $candidate = Join-Path $d.FullName "terraform.exe"
+              if (Test-Path $candidate) {
+                $tfExe = $candidate
+                break
+              }
+            }
+            if (-not $tfExe) {
+              $cmd = Get-Command terraform -ErrorAction SilentlyContinue
+              if ($cmd) { $tfExe = $cmd.Source }
+            }
+            if (-not $tfExe) {
+              New-Item -ItemType Directory -Path $expectedToolsDir -Force | Out-Null
+              $zipName = "terraform_${tfVersionVar}_windows_amd64.zip"
+              $url = "https://releases.hashicorp.com/terraform/$tfVersionVar/$zipName"
+              $zipPath = Join-Path $env:TEMP $zipName
+              Invoke-WebRequest -Uri $url -OutFile $zipPath -UseBasicParsing
+              Expand-Archive -Path $zipPath -DestinationPath $expectedToolsDir -Force
+              Remove-Item $zipPath -Force
+              $tfExe = $expectedTfExe
+            }
+          }
+
+          if (-not (Test-Path $tfExe)) {
+            Write-Error "terraform binary not found for Plan job."
+            exit 1
+          }
+
+          $tfFolder = Split-Path -Parent $tfExe
+          Write-Host "##vso[task.prependpath]$tfFolder"
+          $env:PATH = "$tfFolder;$env:PATH"
+          & $tfExe version
+
+    - task: AzureCLI@2
+      displayName: 'Terraform Plan'
+      inputs:
+        azureSubscription: $(azureServiceConnection)
+        scriptType: ps
+        scriptLocation: inlineScript
+        inlineScript: |
+          Set-Location "$(System.DefaultWorkingDirectory)/$(tfWorkingDirectory)"
+
+          # ensure modules and backend are configured in this job (fixes "Module not installed")
+          terraform init -reconfigure -upgrade `
+            -backend-config="resource_group_name=$(backendResourceGroup)" `
+            -backend-config="storage_account_name=$(backendStorageAccount)" `
+            -backend-config="container_name=$(backendContainerName)" `
+            -backend-config="key=$(backendKey)"
+
+          # added -input=false to prevent Terraform from hanging for missing variables
+          terraform plan -out=tfplan -input=false
+
+    - task: PublishPipelineArtifact@1
+      displayName: 'Publish terraform plan artifact'
+      inputs:
+        targetPath: '$(System.DefaultWorkingDirectory)/$(tfWorkingDirectory)/tfplan'
+        artifact: 'terraformPlan'
+        publishLocation: 'pipeline'
+
+- stage: Terraform_Apply
+  dependsOn: Terraform_Plan
+  condition: succeeded()
+  jobs:
+  - job: Apply
+    steps:
+    - checkout: self
+
+    - task: PowerShell@2
+      displayName: 'Ensure terraform available (detect or download) - Apply job'
+      inputs:
+        targetType: 'inline'
+        script: |
+          $tfVersionVar = "$(terraformVersion)"
+          $agentToolsDir = "$(Agent.ToolsDirectory)"
+          $expectedToolsDir = Join-Path $agentToolsDir "terraform\$tfVersionVar"
+          $expectedTfExe = Join-Path $expectedToolsDir "terraform.exe"
+
+          if (Test-Path $expectedTfExe) {
+            $tfExe = $expectedTfExe
+          } else {
+            $downloadMatches = Get-ChildItem -Path "$env:USERPROFILE\Downloads" -Filter "terraform_*" -Directory -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending
+            $tfExe = $null
+            foreach ($d in $downloadMatches) {
+              $candidate = Join-Path $d.FullName "terraform.exe"
+              if (Test-Path $candidate) {
+                $tfExe = $candidate
+                break
+              }
+            }
+            if (-not $tfExe) {
+              $cmd = Get-Command terraform -ErrorAction SilentlyContinue
+              if ($cmd) { $tfExe = $cmd.Source }
+            }
+            if (-not $tfExe) {
+              New-Item -ItemType Directory -Path $expectedToolsDir -Force | Out-Null
+              $zipName = "terraform_${tfVersionVar}_windows_amd64.zip"
+              $url = "https://releases.hashicorp.com/terraform/$tfVersionVar/$zipName"
+              $zipPath = Join-Path $env:TEMP $zipName
+              Invoke-WebRequest -Uri $url -OutFile $zipPath -UseBasicParsing
+              Expand-Archive -Path $zipPath -DestinationPath $expectedToolsDir -Force
+              Remove-Item $zipPath -Force
+              $tfExe = $expectedTfExe
+            }
+          }
+
+          if (-not (Test-Path $tfExe)) {
+            Write-Error "terraform binary not found for Apply job."
+            exit 1
+          }
+
+          $tfFolder = Split-Path -Parent $tfExe
+          Write-Host "##vso[task.prependpath]$tfFolder"
+          $env:PATH = "$tfFolder;$env:PATH"
+          & $tfExe version
+
+    - task: DownloadPipelineArtifact@2
+      displayName: 'Download terraform plan artifact'
+      inputs:
+        artifact: 'terraformPlan'
+        path: '$(System.DefaultWorkingDirectory)/$(tfWorkingDirectory)'
+
+    - task: AzureCLI@2
+      displayName: 'Terraform Apply'
+      inputs:
+        azureSubscription: $(azureServiceConnection)
+        scriptType: ps
+        scriptLocation: inlineScript
+        inlineScript: |
+          Set-Location "$(System.DefaultWorkingDirectory)/$(tfWorkingDirectory)"
+          terraform apply -auto-approve tfplan
